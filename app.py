@@ -16,7 +16,7 @@ if submitted:
     else:
         try:
             # Caminho UNC da rede (sem verificação explícita)
-            caminho_arquivo = r"\\pom-srv-fs-01\BI_IM_POM\Fontes de Dados XLS\sc\pd_em_massa\pdemmassa.csv"
+            caminho_arquivo = r"\\pom-srv-fs-01\sc\BI_IM_POM\Fontes de Dados XLS\pd_em_massa\pdemmassa.csv"
 
             # Lê o CSV diretamente
             df = pd.read_csv(caminho_arquivo, encoding='utf-8')
