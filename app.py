@@ -30,9 +30,9 @@ if submitted:
                 # Ler o CSV como UTF-8 (formato real enviado pelo Salesforce)
                 content = response.content.decode("utf-8", errors="ignore")
                 if "<html" in content.lower():
-                st.error("O SID fornecido é inválido ou expirou. Faça login no Salesforce e cole o SID válido.")
+                    st.error("O SID fornecido é inválido ou expirou. Faça login no Salesforce e cole o SID válido.")
                 else:
-                df = pd.read_csv(BytesIO(response.content), encoding='utf-8')
+                    df = pd.read_csv(BytesIO(response.content), encoding='utf-8')
 
                 # Corrigir nome da coluna se necessário
                 colunas_corrigidas = [c.encode('utf-8').decode('utf-8') for c in df.columns]
