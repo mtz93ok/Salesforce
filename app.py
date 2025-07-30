@@ -1,53 +1,67 @@
 import streamlit as st
 import pandas as pd
 import requests
-from io import BytesIO, StringIO
+from io import BytesIO
 
-st.title("🔍 Consulta de Relatório por Nome")
+st.set_page_config(page_title="Download de Relatório Salesforce", layout="centered")
 
-# Entrada do nome do colaborador
-nome = st.text_input("Digite seu nome exatamente como aparece no relatório (coluna 'Proprietário da conta')")
+st.title("🔽 Baixar Relatório Individual - Salesforce")
 
-# URL fixa do relatório
-salesforce_url = "https://secil.my.salesforce.com/00O7S000001kByi?export=1&enc=UTF-8&xf=csv"
+# Formulário para entrada de dados
+with st.form("relatorio_form"):
+    nome = st.text_input("Digite seu nome (como aparece no Salesforce)", max_chars=50)
+    email = st.text_input("Digite seu e-mail", max_chars=100)
+    sid = st.text_input("Cole aqui seu SID (você precisa estar logado no Salesforce)", type="password")
+    submitted = st.form_submit_button("🔍 Gerar Relatório")
 
-if nome:
-    try:
-        st.info("🔄 Baixando e processando o relatório...")
+if submitted:
+    if not nome or not sid:
+        st.error("Por favor, preencha todos os campos.")
+    else:
+        try:
+            # Montar URL com SID
+            url = "https://secil.my.salesforce.com/00O7S000001kByi?export=1&enc=UTF-8&xf=csv"
+            headers = {"Authorization": f"Bearer {sid}"}
+            response = requests.get(url, headers=headers)
 
-        response = requests.get(salesforce_url)
-        response.raise_for_status()
-
-        # Força o encoding ISO-8859-1
-        df = pd.read_csv(BytesIO(response.content), encoding="ISO-8859-1")
-
-        # Corrige espaços extras nos nomes de colunas
-        df.columns = df.columns.str.strip()
-
-        # Exibe as colunas detectadas (para debug)
-        # st.write("Colunas:", df.columns.tolist())
-
-        # Verifica se a coluna existe
-        if "Proprietário da conta" not in df.columns:
-            st.error("⚠️ Coluna 'Proprietário da conta' não encontrada no relatório.")
-        else:
-            df_filtrado = df[df["Proprietário da conta"] == nome]
-
-            if df_filtrado.empty:
-                st.warning("Nenhum resultado encontrado para esse nome.")
+            if response.status_code != 200:
+                st.error("Erro ao baixar o relatório. Verifique se o SID está correto e se você está logado.")
             else:
-                st.success(f"{len(df_filtrado)} linha(s) encontradas para {nome}.")
-                st.dataframe(df_filtrado)
+                # Ler o CSV como UTF-8 (formato real enviado pelo Salesforce)
+                df = pd.read_csv(BytesIO(response.content), encoding='utf-8')
 
-                # Converte para CSV e oferece botão de download
-                csv = df_filtrado.to_csv(index=False, sep=';', encoding="ISO-8859-1")
-                st.download_button(
-                    label="📥 Baixar relatório filtrado (.csv)",
-                    data=csv,
-                    file_name=f"relatorio_{nome}.csv",
-                    mime="text/csv"
-                )
+                # Corrigir nome da coluna se necessário
+                colunas_corrigidas = [c.encode('utf-8').decode('utf-8') for c in df.columns]
+                df.columns = colunas_corrigidas
 
-    except Exception as e:
-        st.error(f"Erro: {e}")
+                # Identificar a coluna correta
+                coluna_proprietario = next((c for c in df.columns if "Proprietário" in c), None)
+
+                if not coluna_proprietario:
+                    st.error("Coluna 'Proprietário da conta' não encontrada no relatório.")
+                else:
+                    # Filtrar pelo nome informado
+                    df_filtrado = df[df[coluna_proprietario].str.strip().str.lower() == nome.strip().lower()]
+
+                    if df_filtrado.empty:
+                        st.warning("Nenhum dado encontrado para esse nome.")
+                    else:
+                        # Converter para XLSX direto
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                            df_filtrado.to_excel(writer, index=False, sheet_name='Relatório')
+
+                        output.seek(0)
+                        st.success("Relatório gerado com sucesso!")
+
+                        # Botão de download direto do .xlsx
+                        st.download_button(
+                            label="📥 Baixar relatório (.xlsx)",
+                            data=output,
+                            file_name=f"relatorio_{nome.replace(' ', '_')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+
+        except Exception as e:
+            st.error(f"Ocorreu um erro: {str(e)}")
 
