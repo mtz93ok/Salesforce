@@ -3,54 +3,51 @@ import pandas as pd
 import requests
 from io import BytesIO, StringIO
 
-REPORT_URL = "https://secil.my.salesforce.com/00O7S000001kByi?export=1&enc=UTF-8&xf=csv"
+st.title("🔍 Consulta de Relatório por Nome")
 
-st.title("🔎 Exportar Relatório do Salesforce")
+# Entrada do nome do colaborador
+nome = st.text_input("Digite seu nome exatamente como aparece no relatório (coluna 'Proprietário da conta')")
 
-nome = st.text_input("Digite seu nome (Proprietário da conta)")
-sid = st.text_input("SID do Salesforce", type="password")
+# URL fixa do relatório
+salesforce_url = "https://secil.my.salesforce.com/00O7S000001kByi?export=1&enc=UTF-8&xf=csv"
 
-if st.button("Gerar e baixar relatório"):
-    if not nome or not sid:
-        st.warning("Preencha todos os campos.")
-    else:
-        headers = {"Authorization": f"Bearer {sid}"}
-        response = requests.get(REPORT_URL, headers=headers)
+if nome:
+    try:
+        st.info("🔄 Baixando e processando o relatório...")
 
-        if response.status_code == 200:
-            try:
-                # Lê o CSV corretamente como UTF-8
-                df = pd.read_csv(BytesIO(response.content), encoding="utf-8")
-                df.columns = df.columns.str.strip().str.lower()
-                nome = nome.strip().lower()
+        response = requests.get(salesforce_url)
+        response.raise_for_status()
 
-                # Detecta a coluna correta do proprietário
-                coluna_proprietario = [col for col in df.columns if "propriet" in col and "conta" in col]
-                if not coluna_proprietario:
-                    st.error("Coluna 'Proprietário da conta' não encontrada.")
-                else:
-                    col = coluna_proprietario[0]
-                    df[col] = df[col].astype(str).str.strip().str.lower()
-                    df_filtrado = df[df[col] == nome]
+        # Força o encoding ISO-8859-1
+        df = pd.read_csv(BytesIO(response.content), encoding="ISO-8859-1")
 
-                    if df_filtrado.empty:
-                        st.warning("Nenhum dado encontrado para esse nome.")
-                    else:
-                        st.dataframe(df_filtrado)
+        # Corrige espaços extras nos nomes de colunas
+        df.columns = df.columns.str.strip()
 
-                        # Exporta para ISO-8859-1 para compatibilidade com Excel
-                        csv_buffer = StringIO()
-                        df_filtrado.to_csv(csv_buffer, index=False, encoding="ISO-8859-1")
-                        csv_data = csv_buffer.getvalue()
+        # Exibe as colunas detectadas (para debug)
+        # st.write("Colunas:", df.columns.tolist())
 
-                        st.download_button(
-                            label="📥 Baixar CSV em ISO-8859-1",
-                            data=csv_data.encode("ISO-8859-1"),
-                            file_name=f"relatorio_{nome}.csv",
-                            mime="text/csv"
-                        )
-
-            except Exception as e:
-                st.error(f"Erro ao processar o CSV: {e}")
+        # Verifica se a coluna existe
+        if "Proprietário da conta" not in df.columns:
+            st.error("⚠️ Coluna 'Proprietário da conta' não encontrada no relatório.")
         else:
-            st.error("Erro ao baixar o relatório. Verifique o SID.")
+            df_filtrado = df[df["Proprietário da conta"] == nome]
+
+            if df_filtrado.empty:
+                st.warning("Nenhum resultado encontrado para esse nome.")
+            else:
+                st.success(f"{len(df_filtrado)} linha(s) encontradas para {nome}.")
+                st.dataframe(df_filtrado)
+
+                # Converte para CSV e oferece botão de download
+                csv = df_filtrado.to_csv(index=False, sep=';', encoding="ISO-8859-1")
+                st.download_button(
+                    label="📥 Baixar relatório filtrado (.csv)",
+                    data=csv,
+                    file_name=f"relatorio_{nome}.csv",
+                    mime="text/csv"
+                )
+
+    except Exception as e:
+        st.error(f"Erro: {e}")
+
