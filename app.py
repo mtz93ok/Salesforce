@@ -1,100 +1,53 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
-from io import StringIO
-from pathlib import Path
-from openpyxl import load_workbook
-import smtplib
-from email.message import EmailMessage
-import os
+from io import BytesIO, StringIO
 
-# --- Streamlit UI ---
-st.title("Solicitação de Base - Salesforce")
+# URL fixa do relatório Salesforce
+REPORT_URL = "https://secil.my.salesforce.com/00O7S000001kByi?export=1&enc=UTF-8&xf=csv"
 
-with st.form("formulario"):
-    nome = st.text_input("Seu nome completo")
-    email = st.text_input("Seu e-mail")
-    sid = st.text_input("SID do Salesforce")
-    enviar = st.form_submit_button("Gerar e Enviar Base")
+st.title("🔎 Exportar Relatório do Salesforce")
 
-if enviar:
-    try:
-        # --- Diretórios ---
-        base_dir = Path.cwd()
-        export_dir = base_dir / "bases_geradas"
-        export_dir.mkdir(exist_ok=True)
+# Entradas do usuário
+nome = st.text_input("Digite seu nome (Proprietário da conta)")
+sid = st.text_input("SID do Salesforce", type="password")
 
-        # --- Configuração SID e cabeçalho ---
+if st.button("Gerar e baixar relatório"):
+    if not nome or not sid:
+        st.warning("Por favor, preencha o nome e o SID.")
+    else:
+        # Faz o request autenticado com o SID
         headers = {
-            "Cookie": f"sid={sid}",
-            "User-Agent": "Mozilla/5.0"
+            "Authorization": f"Bearer {sid}"
         }
+        response = requests.get(REPORT_URL, headers=headers)
 
-        data_hoje = datetime.now().strftime("%d-%m-%Y")
-        relatorios = {
-            "pd_massa": "https://secil.my.salesforce.com/00O7S000001kByi?export=1&enc=UTF-8&xf=csv",
-        }
+        if response.status_code == 200:
+            try:
+                df = pd.read_csv(BytesIO(response.content), encoding='utf-8')
+                st.write("Pré-visualização dos dados (com filtro):")
 
-        colunas_numericas = [
-            'Preço Tabela / Saco',
-            'Preço Proposto FOB /Ton',
-            'Preço Proposto Frete /Ton',
-            'Preço Proposto Final /Ton',
-            'Valor do frete agenciado',
-            'Preço Proposto FOB /Saco',
-            'Preço Proposto Frete /Saco',
-            'Preço Proposto Final /Saco'
-        ]
+                # Filtra pelo nome na coluna correta
+                df_filtrado = df[df["Proprietário da conta"] == nome]
 
-        def para_float(coluna):
-            return (
-                coluna.astype(str)
-                .str.replace(",", ".", regex=False)
-                .str.replace("%", "", regex=False)
-                .str.strip()
-            )
+                if df_filtrado.empty:
+                    st.warning("Nenhum resultado encontrado para esse nome.")
+                else:
+                    st.dataframe(df_filtrado)
 
-        for nome_rel, url in relatorios.items():
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
+                    # Converte para CSV em memória
+                    csv_buffer = StringIO()
+                    df_filtrado.to_csv(csv_buffer, index=False)
+                    csv_data = csv_buffer.getvalue()
 
-            if "html" in response.text[:100].lower():
-                raise ValueError("⚠️ Resposta HTML (SID inválido ou link errado).")
-
-            df = pd.read_csv(StringIO(response.text), on_bad_lines='skip')
-
-            for col in colunas_numericas:
-                if col in df.columns:
-                    df[col] = para_float(df[col])
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
-
-            nome_arquivo = f"{nome_rel}_{nome.replace(' ', '_')}_{data_hoje}.xlsx"
-            caminho_arquivo = export_dir / nome_arquivo
-            df.to_excel(caminho_arquivo, index=False)
-
-            # --- Envio por e-mail ---
-            msg = EmailMessage()
-            msg["Subject"] = "Sua base Salesforce está pronta"
-            msg["From"] = "SEU_EMAIL@dominio.com"
-            msg["To"] = email
-            msg.set_content(f"Olá {nome},\n\nSegue em anexo sua base gerada em {data_hoje}.\n\nAtenciosamente,\nEquipe Automatização")
-
-            with open(caminho_arquivo, "rb") as f:
-                msg.add_attachment(
-                    f.read(),
-                    maintype="application",
-                    subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    filename=nome_arquivo
-                )
-
-            # Substitua os dados SMTP abaixo pelos reais:
-            with smtplib.SMTP("smtp.dominio.com", 587) as smtp:
-                smtp.starttls()
-                smtp.login("SEU_EMAIL@dominio.com", "SENHA_DE_APP")
-                smtp.send_message(msg)
-
-            st.success(f"✅ Arquivo enviado para {email} com sucesso!")
-
-    except Exception as e:
-        st.error(f"❌ Ocorreu um erro: {e}")
+                    # Botão para baixar CSV
+                    st.download_button(
+                        label="📥 Baixar relatório filtrado",
+                        data=csv_data,
+                        file_name=f"relatorio_{nome}.csv",
+                        mime="text/csv"
+                    )
+            except Exception as e:
+                st.error(f"Erro ao processar o CSV: {e}")
+        else:
+            st.error("Erro ao baixar o relatório. Verifique se o SID está válido.")
