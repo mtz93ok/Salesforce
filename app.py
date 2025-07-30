@@ -17,7 +17,7 @@ if submitted:
     else:
         try:
             # Caminho UNC da rede (substitui o mapeamento K:\)
-            caminho_arquivo = r"\\pom-srv-fs-01\BI_IM_POM\Fontes de Dados XLS\pd_em_massa\pdemmassa.csv"
+            caminho_arquivo = r"\\pom-srv-fs-01\sc\BI_IM_POM\Fontes de Dados XLS\pd_em_massa\pdemmassa.csv"
 
             # Verifica se o arquivo existe
             if not os.path.exists(caminho_arquivo):
