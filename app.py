@@ -19,12 +19,12 @@ if submitted:
             # Caminho UNC da rede (substitui o mapeamento K:\)
             caminho_arquivo = r"\\pom-srv-fs-01\sc\BI_IM_POM\Fontes de Dados XLS\pd_em_massa\pdemmassa.csv"
 
-            # Verifica se o arquivo existe
-            if not os.path.exists(caminho_arquivo):
-                st.error("Arquivo não encontrado no caminho da rede.")
-            else:
-                # Lê o CSV
-                df = pd.read_csv(caminho_arquivo, encoding='utf-8')
+            # # Verifica se o arquivo existe
+            # if not os.path.exists(caminho_arquivo):
+            #     st.error("Arquivo não encontrado no caminho da rede.")
+            # else:
+            #     # Lê o CSV
+            #     df = pd.read_csv(caminho_arquivo, encoding='utf-8')
 
                 # Tenta identificar uma coluna que contenha "Proprietário" ou similar
                 coluna_proprietario = next((col for col in df.columns if "Proprietário" in col or "Nome" in col), None)
