@@ -1,0 +1,100 @@
+import streamlit as st
+import pandas as pd
+import requests
+from datetime import datetime
+from io import StringIO
+from pathlib import Path
+from openpyxl import load_workbook
+import smtplib
+from email.message import EmailMessage
+import os
+
+# --- Streamlit UI ---
+st.title("Solicitação de Base - Salesforce")
+
+with st.form("formulario"):
+    nome = st.text_input("Seu nome completo")
+    email = st.text_input("Seu e-mail")
+    sid = st.text_input("SID do Salesforce")
+    enviar = st.form_submit_button("Gerar e Enviar Base")
+
+if enviar:
+    try:
+        # --- Diretórios ---
+        base_dir = Path.cwd()
+        export_dir = base_dir / "bases_geradas"
+        export_dir.mkdir(exist_ok=True)
+
+        # --- Configuração SID e cabeçalho ---
+        headers = {
+            "Cookie": f"sid={sid}",
+            "User-Agent": "Mozilla/5.0"
+        }
+
+        data_hoje = datetime.now().strftime("%d-%m-%Y")
+        relatorios = {
+            "pd_massa": "https://secil.my.salesforce.com/00O7S000001kByi?export=1&enc=UTF-8&xf=csv",
+        }
+
+        colunas_numericas = [
+            'Preço Tabela / Saco',
+            'Preço Proposto FOB /Ton',
+            'Preço Proposto Frete /Ton',
+            'Preço Proposto Final /Ton',
+            'Valor do frete agenciado',
+            'Preço Proposto FOB /Saco',
+            'Preço Proposto Frete /Saco',
+            'Preço Proposto Final /Saco'
+        ]
+
+        def para_float(coluna):
+            return (
+                coluna.astype(str)
+                .str.replace(",", ".", regex=False)
+                .str.replace("%", "", regex=False)
+                .str.strip()
+            )
+
+        for nome_rel, url in relatorios.items():
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+
+            if "html" in response.text[:100].lower():
+                raise ValueError("⚠️ Resposta HTML (SID inválido ou link errado).")
+
+            df = pd.read_csv(StringIO(response.text), on_bad_lines='skip')
+
+            for col in colunas_numericas:
+                if col in df.columns:
+                    df[col] = para_float(df[col])
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+
+            nome_arquivo = f"{nome_rel}_{nome.replace(' ', '_')}_{data_hoje}.xlsx"
+            caminho_arquivo = export_dir / nome_arquivo
+            df.to_excel(caminho_arquivo, index=False)
+
+            # --- Envio por e-mail ---
+            msg = EmailMessage()
+            msg["Subject"] = "Sua base Salesforce está pronta"
+            msg["From"] = "SEU_EMAIL@dominio.com"
+            msg["To"] = email
+            msg.set_content(f"Olá {nome},\n\nSegue em anexo sua base gerada em {data_hoje}.\n\nAtenciosamente,\nEquipe Automatização")
+
+            with open(caminho_arquivo, "rb") as f:
+                msg.add_attachment(
+                    f.read(),
+                    maintype="application",
+                    subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    filename=nome_arquivo
+                )
+
+            # Substitua os dados SMTP abaixo pelos reais:
+            with smtplib.SMTP("smtp.dominio.com", 587) as smtp:
+                smtp.starttls()
+                smtp.login("SEU_EMAIL@dominio.com", "SENHA_DE_APP")
+                smtp.send_message(msg)
+
+            st.success(f"✅ Arquivo enviado para {email} com sucesso!")
+
+    except Exception as e:
+        st.error(f"❌ Ocorreu um erro: {e}")
